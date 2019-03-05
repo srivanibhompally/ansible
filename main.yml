@@ -1,0 +1,78 @@
+---
+# tasks file for base
+
+- name: Making changes to hosts file
+  lineinfile:
+    path: /etc/hosts
+    state: present
+    insertafter: EOF
+    line: "{{ ansible_eth1['ipv4']['address'] }} {{ host_name }}.{{ domain_name }} {{ host_name }}"
+
+- name: Setting up hostname of the servers
+  command: hostnamectl --static set-hostname {{ host_name }}
+
+- name: Editing the resolv file
+  lineinfile:
+    dest: /etc/resolv.conf
+    state: present
+    insertafter: EOF
+    line: '# helloworld'
+
+- name: Making sure, changes take effect
+  command: sudo systemctl restart systemd-hostnamed
+
+- name: Setting up motd_message
+  lineinfile:
+    dest: /etc/motd
+    state: present
+    line: "{{ motd_message }}"
+
+- name: configuring ntp for boxes
+  yum:
+    name: ntp
+    state: present
+    update_cache: yes
+
+- name: Enabling ntpd service # enabling the ntp daemon
+  command: systemctl enable ntpd
+
+- name: Starting ntpd service # starting the ntp daemon
+  command: systemctl start ntpd
+
+- name: Set time-zone for the centosbox # setting timezone to Kolkata (local)
+  command: timedatectl set-timezone "{{ ntp_timezone }}"
+
+- name: Group creation
+  group:
+    name: "{{ group_name }}"
+    state: present
+
+- name: User creation
+  user:
+    group: "{{ group_name }}"
+    name: "{{ user_name }}"
+    password: "{{ user_password }}" # created with mk passwd
+    create_home: yes
+    shell: /bin/bash
+
+- name: adding my ssh key to the created user
+  authorized_key:
+    user: "{{ user_name }}"
+    state: present
+    key: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/id_rsa.pub' ) }}"
+- name: Verifying if EPEL repo is already added or not
+    stat:
+      path: /etc/yum.repos.d/epel.repo
+    register: epel_result
+
+- name: Adding EPEL repo if it doesn't exist
+  yum:
+    name: "{{ epel_repo_url }}"
+    state: present
+  when: not epel_result.stat.exists
+- name: Importing EPEL GPG key
+  rpm_key:
+    state: present
+    key: "{{ epel_repo_key }}"
+  when: not epel_result.stat.exists
+
